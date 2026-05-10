@@ -1,0 +1,1586 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>太陽系全息導覽系統 - 圖鑑收集版 / Solar System Holographic Guide</title>
+    
+    <!-- 引入字體 -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- 引入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Noto Sans TC"', 'sans-serif'],
+                        tech: ['"Rajdhani"', 'sans-serif'],
+                    },
+                    colors: {
+                        hologram: { light: '#00f0ff', DEFAULT: '#00c3ff', dark: '#004466', moon: '#ffbb00', sun: '#ff8800', success: '#00ff66', gold: '#ffd700' }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background-color: #000000; 
+            color: #fff; 
+            touch-action: none; 
+            /* 禁用文字反白選取 */
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none; 
+        }
+        canvas { display: block; outline: none; touch-action: none; }
+        
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(0, 240, 255, 0.4); border-radius: 2px; }
+
+        .glass-panel {
+            background: linear-gradient(135deg, rgba(2, 5, 10, 0.9) 0%, rgba(0, 10, 15, 0.98) 100%);
+            backdrop-filter: blur(25px); -webkit-backdrop-filter: blur(25px);
+            border-left: 1px solid rgba(0, 240, 255, 0.3);
+            box-shadow: -15px 0 50px rgba(0, 0, 0, 0.9), inset 1px 0 0 rgba(255, 255, 255, 0.1);
+        }
+
+        .scan-line {
+            position: absolute; top: 0; left: 0; width: 100%; height: 2px;
+            background: linear-gradient(to right, transparent, rgba(0, 240, 255, 0.8), transparent);
+            opacity: 0.5; animation: scan 4s linear infinite; pointer-events: none; z-index: 50;
+        }
+        @keyframes scan { 0% { top: -5%; } 100% { top: 105%; } }
+
+        /* 準星樣式 */
+        .target-reticle { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 40px; height: 40px; pointer-events: none; opacity: 0; z-index: 10; }
+        
+        .target-reticle.is-moon .corner { border-color: rgba(255, 187, 0, 0.8); box-shadow: 0 0 8px rgba(255, 187, 0, 0.5); }
+        .target-reticle.is-moon::before, .target-reticle.is-moon::after { background: rgba(255, 187, 0, 0.9); box-shadow: 0 0 8px rgba(255, 187, 0, 0.5); }
+        
+        .target-reticle.is-sun .corner { border-color: rgba(255, 136, 0, 0.8); box-shadow: 0 0 8px rgba(255, 136, 0, 0.5); }
+        .target-reticle.is-sun::before, .target-reticle.is-sun::after { background: rgba(255, 136, 0, 0.9); box-shadow: 0 0 8px rgba(255, 136, 0, 0.5); }
+        
+        /* 鎖定成功動畫樣式 */
+        .target-reticle.is-locked .corner { border-color: rgba(0, 255, 102, 0.9) !important; box-shadow: 0 0 15px rgba(0, 255, 102, 0.8) !important; }
+        .target-reticle.is-locked::before, .target-reticle.is-locked::after { background: rgba(0, 255, 102, 0.9) !important; box-shadow: 0 0 15px rgba(0, 255, 102, 0.8) !important; }
+
+        .target-reticle::before, .target-reticle::after, .target-reticle .corner { position: absolute; background: rgba(0, 240, 255, 0.9); box-shadow: 0 0 8px rgba(0, 240, 255, 0.5); transition: all 0.2s; }
+        .target-reticle::before { top: 50%; left: -8px; width: 12px; height: 2px; content:''; }
+        .target-reticle::after { left: 50%; top: -8px; width: 2px; height: 12px; content:''; }
+        .corner { width: 10px; height: 10px; border: 2px solid rgba(0, 240, 255, 0.8); background: transparent !important; }
+        .corner-tl { top: 0; left: 0; border-right: none; border-bottom: none; }
+        .corner-tr { top: 0; right: 0; border-left: none; border-bottom: none; }
+        .corner-bl { bottom: 0; left: 0; border-right: none; border-top: none; }
+        .corner-br { bottom: 0; right: 0; border-left: none; border-top: none; }
+
+        #loading-screen { background: radial-gradient(circle at center, #001122 0%, #000000 100%); transition: opacity 1s ease-out; }
+        .glitch-text { text-shadow: 2px 0 rgba(0,255,255,0.5), -2px 0 rgba(255,0,255,0.5); animation: glitch 2s infinite linear alternate-reverse; }
+        @keyframes glitch { 0% { clip-path: inset(20% 0 80% 0); } 20% { clip-path: inset(60% 0 10% 0); } 40% { clip-path: inset(40% 0 50% 0); } 60% { clip-path: inset(80% 0 5% 0); } 80% { clip-path: inset(10% 0 70% 0); } 100% { clip-path: inset(30% 0 20% 0); } }
+
+        .ui-btn { background: rgba(0, 240, 255, 0.05); border: 1px solid rgba(0, 240, 255, 0.3); color: #00f0ff; transition: all 0.3s ease; }
+        .ui-btn:hover { background: rgba(0, 240, 255, 0.2); border-color: rgba(0, 240, 255, 0.8); }
+        .ui-btn.active { background: rgba(0, 240, 255, 0.7); color: #000; box-shadow: 0 0 10px rgba(0, 240, 255, 0.5); border-color: transparent; }
+
+        .celebrate-pulse { animation: successPulse 1.5s ease-out; }
+        @keyframes successPulse { 0% { box-shadow: 0 0 0 0 rgba(0, 255, 102, 0.8); background-color: rgba(0, 255, 102, 0.3); } 70% { box-shadow: 0 0 0 30px rgba(0, 255, 102, 0); background-color: rgba(0, 0, 0, 0.6); } 100% { box-shadow: 0 0 0 0 rgba(0, 255, 102, 0); } }
+        
+        .earth-scale-bar { transition: width 1.5s cubic-bezier(0.16, 1, 0.3, 1); }
+        
+        /* 圖鑑卷軸 */
+        #gallery-grid::-webkit-scrollbar { width: 6px; }
+        #gallery-grid::-webkit-scrollbar-thumb { background: rgba(0, 240, 255, 0.3); border-radius: 3px; }
+
+        /* 面板收合按鈕樣式 */
+        .toggle-btn {
+            position: absolute;
+            left: -24px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 24px;
+            height: 60px;
+            background: rgba(0, 10, 15, 0.9);
+            border: 1px solid rgba(0, 240, 255, 0.3);
+            border-right: none;
+            border-radius: 8px 0 0 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 50;
+            color: rgba(0, 240, 255, 0.8);
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+        .toggle-btn:hover {
+            background: rgba(0, 240, 255, 0.2);
+            color: #fff;
+            box-shadow: -5px 0 15px rgba(0, 240, 255, 0.3);
+        }
+        .panel-collapsed { transform: translateX(100%) !important; }
+
+        /* 全破任務慶典動畫 */
+        @keyframes grandCelebration {
+            0% { transform: scale(0.8); opacity: 0; }
+            20% { transform: scale(1.1); opacity: 1; filter: brightness(1.5); }
+            40% { transform: scale(1); opacity: 1; }
+            80% { transform: scale(1); opacity: 1; }
+            100% { transform: scale(1.2); opacity: 0; }
+        }
+        .grand-animate { animation: grandCelebration 6s forwards ease-in-out; }
+        
+        /* 音樂按鈕旋轉動畫 */
+        @keyframes slowSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .playing-music { animation: slowSpin 4s linear infinite; color: #00c3ff; }
+        .paused-music { color: #666; }
+    </style>
+</head>
+<body>
+
+    <!-- 背景音樂 -->
+    <audio id="bg-music" loop preload="auto">
+        <!-- 使用一首免版稅、充滿宇宙探索感的環境音樂 -->
+        <source src="https://cdn.pixabay.com/audio/2022/10/25/audio_22dbd668cc.mp3" type="audio/mpeg">
+    </audio>
+
+    <!-- 啟動載入畫面 -->
+    <div id="loading-screen" class="absolute inset-0 z-[60] flex flex-col items-center justify-center font-tech">
+        <div class="w-64 relative">
+            <div class="text-hologram tracking-[0.3em] text-sm mb-4 glitch-text">LOADING EXPLORER DB...</div>
+            <div class="h-1 w-full bg-gray-800 rounded overflow-hidden">
+                <div id="loading-bar" class="h-full bg-hologram w-0 transition-all duration-300 shadow-[0_0_10px_#00c3ff]"></div>
+            </div>
+            <div id="loading-text" class="text-gray-400 text-xs mt-2 tracking-wider text-right">0%</div>
+        </div>
+    </div>
+
+    <!-- 3D 畫布容器 -->
+    <div id="canvas-container" class="absolute inset-0 z-0"></div>
+
+    <!-- 準星 -->
+    <div id="reticle" class="target-reticle">
+        <div class="corner corner-tl"></div><div class="corner corner-tr"></div>
+        <div class="corner corner-bl"></div><div class="corner corner-br"></div>
+    </div>
+
+    <!-- 全破究極慶祝畫面 -->
+    <div id="grand-celebration" class="absolute inset-0 z-[100] flex flex-col items-center justify-center opacity-0 pointer-events-none bg-black/60 backdrop-blur-md">
+        <div id="grand-content" class="text-center">
+            <div class="text-[80px] sm:text-[120px] mb-4 drop-shadow-[0_0_40px_#ffd700]">🏆</div>
+            <h1 class="text-4xl sm:text-6xl font-black text-hologram-gold tracking-widest drop-shadow-[0_0_20px_#ffd700] mb-6" id="grand-title">星際探索大師！</h1>
+            <p class="text-xl sm:text-2xl text-white font-bold mb-4 drop-shadow-[0_2px_4px_#000]" id="grand-msg">你已經完成了所有的星際尋寶任務！</p>
+            <p class="text-base sm:text-lg text-hologram max-w-2xl px-4 leading-relaxed" id="grand-submsg">但宇宙的奧秘遠不止於此... 請繼續慢慢探索，打開圖鑑，把剩下的神祕星球全都收集齊全吧！</p>
+        </div>
+    </div>
+
+    <!-- 收集圖鑑彈出層 (Gallery Modal) -->
+    <div id="gallery-modal" class="absolute inset-0 z-50 bg-black/80 backdrop-blur-md opacity-0 pointer-events-none transition-opacity duration-300 flex items-center justify-center p-4 sm:p-8">
+        <div class="glass-panel w-full max-w-5xl h-[85vh] rounded-xl flex flex-col overflow-hidden relative border border-hologram/40 shadow-[0_0_40px_rgba(0,195,255,0.2)]">
+            <!-- Header -->
+            <div class="p-5 border-b border-hologram/20 flex justify-between items-center bg-black/60 shrink-0">
+                <div class="flex items-center gap-3">
+                    <svg class="w-6 h-6 text-hologram" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
+                    <h2 id="ui-gallery-title" class="text-xl sm:text-2xl font-tech font-bold text-hologram tracking-[0.2em] uppercase">星體收集圖鑑</h2>
+                </div>
+                <button id="btn-close-gallery" class="text-gray-400 hover:text-white transition-colors bg-white/5 p-2 rounded hover:bg-white/10">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <!-- Grid -->
+            <div id="gallery-grid" class="p-6 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 sm:gap-6 flex-grow content-start">
+                <!-- Cards will be injected by JavaScript -->
+            </div>
+        </div>
+    </div>
+
+    <!-- UI 覆蓋層 -->
+    <div id="ui-layer" class="absolute inset-0 z-20 flex flex-col justify-between overflow-hidden pointer-events-none">
+        
+        <div class="p-4 sm:p-6 pointer-events-auto flex flex-col sm:flex-row items-start sm:items-start gap-4 w-full justify-between relative">
+            
+            <div class="flex flex-col gap-2">
+                <div class="font-tech text-hologram tracking-[0.2em] text-xs sm:text-sm flex flex-col bg-black/60 px-4 py-2 border border-hologram/30 rounded backdrop-blur-md relative overflow-hidden shadow-[0_0_10px_rgba(0,195,255,0.1)]">
+                    <div class="absolute right-0 top-0 w-1 h-full bg-hologram shadow-[0_0_8px_#00c3ff]"></div>
+                    <div class="flex items-center gap-3">
+                        <span class="w-2 h-2 bg-hologram animate-pulse rounded-full shadow-[0_0_8px_#00c3ff] flex-shrink-0"></span>
+                        <span id="ui-system-status" class="truncate">ASTRO-EXPLORER V2.0 (GALLERY)</span>
+                    </div>
+                    <div id="ui-select-prompt" class="text-gray-400 text-[10px] sm:text-xs mt-1 sm:ml-5 tracking-wider">滑鼠滾輪可縮放 / 點擊星體存取檔案</div>
+                </div>
+
+                <!-- 可點擊的圖鑑進度條 -->
+                <div id="btn-open-gallery" class="bg-black/60 border border-hologram/30 rounded backdrop-blur-md p-3 w-56 cursor-pointer hover:bg-hologram/10 transition-colors group shadow-[0_0_10px_rgba(0,195,255,0.1)]">
+                    <div class="flex justify-between items-end mb-1">
+                        <span class="text-[10px] text-gray-400 font-tech tracking-widest flex items-center gap-1 group-hover:text-hologram transition-colors">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
+                            <span id="ui-discovery-title">已探索星體 DISCOVERY</span>
+                        </span>
+                        <span class="text-hologram font-bold font-tech text-sm"><span id="discovery-count">0</span>/<span id="discovery-total">14</span></span>
+                    </div>
+                    <div class="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden">
+                        <div id="discovery-bar" class="h-full bg-hologram w-0 transition-all duration-1000 shadow-[0_0_8px_#00c3ff]"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 任務面板 -->
+            <div id="quest-container" class="absolute left-1/2 transform -translate-x-1/2 top-4 sm:top-6 bg-black/70 border border-hologram-moon rounded-lg backdrop-blur-md px-6 py-3 shadow-[0_0_20px_rgba(255,187,0,0.2)] text-center transition-all duration-300 w-[90%] sm:w-auto max-w-[400px]">
+                <div class="text-hologram-moon text-[10px] sm:text-xs font-tech tracking-widest mb-1 flex items-center justify-center gap-2" id="quest-header">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"></path></svg>
+                    <span id="ui-quest-label">星際尋寶任務 QUEST</span>
+                </div>
+                <div id="quest-text" class="text-white text-sm sm:text-base font-bold drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]">任務載入中...</div>
+            </div>
+            
+            <div class="flex bg-black/60 border border-hologram/30 rounded backdrop-blur-md p-1 font-tech tracking-wider text-xs h-fit">
+                <button id="btn-lang-zh" class="ui-btn active px-3 py-1.5 rounded cursor-pointer pointer-events-auto">中</button>
+                <button id="btn-lang-en" class="ui-btn px-3 py-1.5 rounded cursor-pointer pointer-events-auto">EN</button>
+            </div>
+        </div>
+
+        <div id="event-panel" class="p-4 sm:p-6 pointer-events-auto flex flex-col gap-2 z-30 transition-opacity duration-300">
+            <div class="text-hologram text-[10px] sm:text-xs font-tech tracking-widest mb-1 flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                <span id="ui-events-title">ORBITAL EVENTS</span>
+            </div>
+            <div class="flex flex-col gap-2 sm:w-48 w-40">
+                <button class="event-btn ui-btn active px-3 py-2 rounded text-left text-xs tracking-widest font-tech" data-event="normal" id="btn-evt-normal">正常軌道 Normal</button>
+                <button class="event-btn ui-btn px-3 py-2 rounded text-left text-xs tracking-widest font-tech" data-event="alignment" id="btn-evt-align">九星連珠 Alignment</button>
+                <button class="event-btn ui-btn px-3 py-2 rounded text-left text-xs tracking-widest font-tech" data-event="cross" id="btn-evt-cross">十字象限 Quadrature</button>
+            </div>
+
+            <!-- 音樂控制按鈕 -->
+            <button id="btn-music" class="ui-btn mt-2 w-10 h-10 rounded-full flex items-center justify-center cursor-pointer transition-colors paused-music" title="播放/暫停背景音樂">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path>
+                </svg>
+            </button>
+        </div>
+
+        <!-- 面板寬度：sm:w-[360px] md:w-[400px] -->
+        <div id="info-panel" class="glass-panel absolute right-0 top-0 w-full sm:w-[360px] md:w-[400px] h-full transform translate-x-full transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col pointer-events-auto z-40">
+            
+            <!-- 面板收合按鈕 -->
+            <button id="btn-toggle-panel" class="toggle-btn" title="收合/展開面板">
+                <svg id="toggle-icon" class="w-5 h-5 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+            </button>
+
+            <div class="scan-line"></div>
+            
+            <div id="success-overlay" class="absolute inset-0 z-50 bg-hologram-success/20 backdrop-blur-sm flex flex-col items-center justify-center opacity-0 pointer-events-none transition-opacity duration-300">
+                <div class="text-6xl mb-4 drop-shadow-[0_0_20px_#00ff66]">🎉</div>
+                <div id="ui-success-title" class="text-3xl font-black text-white tracking-widest drop-shadow-[0_0_10px_#00ff66] mb-2">任務完成！</div>
+                <div id="success-msg" class="text-center text-lg text-gray-100 px-8 font-bold"></div>
+            </div>
+
+            <div class="p-6 sm:p-8 pb-4 flex-shrink-0 relative z-10 pt-12 sm:pt-8">
+                <div class="font-tech text-hologram-dark text-xs tracking-widest mb-2 border-b border-hologram-dark/30 pb-1 flex justify-between">
+                    <span id="ui-db-title">STELLAR DATABASE</span>
+                    <span id="panel-id" class="text-hologram font-bold">ID: 00</span>
+                </div>
+                <!-- 縮小標題字級以適應較窄的面板 -->
+                <div class="flex items-end gap-3 sm:gap-4 mb-1 flex-wrap">
+                    <h1 id="planet-name" class="text-3xl sm:text-4xl font-bold tracking-wider text-white drop-shadow-[0_0_15px_rgba(0,240,255,0.4)] transition-colors duration-300">名稱</h1>
+                    <span id="planet-type" class="text-[10px] sm:text-xs text-gray-400 font-tech tracking-widest mb-1 border border-gray-600 px-2 rounded">類型</span>
+                </div>
+                <div class="flex items-center gap-3 mb-4 sm:mb-5">
+                    <h2 id="planet-subname" class="font-tech text-hologram text-base sm:text-lg tracking-[0.4em] uppercase opacity-90">Name</h2>
+                    <span id="moon-parent-badge" class="hidden text-[9px] bg-hologram-dark/50 text-hologram border border-hologram/50 px-2 py-0.5 rounded uppercase tracking-wider">Orbiting: Earth</span>
+                </div>
+                <div id="title-divider" class="h-[2px] w-16 bg-hologram mb-4 shadow-[0_0_10px_#00c3ff]"></div>
+            </div>
+
+            <div class="px-6 sm:px-8 overflow-y-auto flex-grow text-sm text-gray-300 leading-relaxed font-light relative z-10 pb-10 scroll-smooth">
+                <p id="planet-desc" class="mb-6 text-justify opacity-90 text-[13px] sm:text-[14px] leading-relaxed">描述...</p>
+                <div id="scale-container" class="mb-6 bg-black/40 p-3 rounded-lg border border-white/10 hidden">
+                    <div class="text-[10px] text-gray-400 font-tech tracking-widest uppercase mb-2 flex justify-between">
+                        <span id="ui-scale-title">體積對比 (以地球為基準)</span>
+                        <span id="scale-ratio-text" class="text-hologram font-bold">1x</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <div class="w-6 h-6 rounded-full bg-blue-500 shadow-[0_0_10px_#0088ff] flex-shrink-0 flex items-center justify-center text-[8px]" id="ui-earth-label">地</div>
+                        <div class="flex-grow h-2 bg-gray-800 rounded-full overflow-hidden">
+                            <div id="scale-bar" class="h-full bg-hologram earth-scale-bar w-0"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-2 sm:gap-3 font-tech mb-6">
+                    <div class="bg-white/5 border border-white/10 p-2 rounded-lg">
+                        <div class="text-[9px] text-gray-400 uppercase tracking-widest mb-1 truncate" id="ui-label-mass">質量 (地球=1)</div>
+                        <div id="stat-mass" class="text-base sm:text-lg text-white font-semibold">0</div>
+                    </div>
+                    <div class="bg-white/5 border border-white/10 p-2 rounded-lg">
+                        <div class="text-[9px] text-gray-400 uppercase tracking-widest mb-1 truncate" id="ui-label-dist">距離 (天文單位)</div>
+                        <div id="stat-gravity" class="text-base sm:text-lg text-white font-semibold">0</div>
+                    </div>
+                    <div class="bg-white/5 border border-white/10 p-2 rounded-lg">
+                        <div class="text-[9px] text-gray-400 uppercase tracking-widest mb-1 truncate" id="ui-label-radius">半徑 (公里)</div>
+                        <div id="stat-radius" class="text-base sm:text-lg text-white font-semibold">0</div>
+                    </div>
+                    <div class="bg-white/5 border border-white/10 p-2 rounded-lg">
+                        <div class="text-[9px] text-gray-400 uppercase tracking-widest mb-1 truncate" id="ui-label-orbit">公轉週期 (天)</div>
+                        <div id="stat-orbit" class="text-base sm:text-lg text-white font-semibold">0</div>
+                    </div>
+                    <div class="bg-white/5 border border-white/10 p-2 rounded-lg">
+                        <div class="text-[9px] text-gray-400 uppercase tracking-widest mb-1 truncate" id="ui-label-day">自轉週期</div>
+                        <div id="stat-day" class="text-sm sm:text-base text-white font-semibold truncate">0</div>
+                    </div>
+                    <div class="bg-white/5 border border-white/10 p-2 rounded-lg">
+                        <div class="text-[9px] text-gray-400 uppercase tracking-widest mb-1 truncate" id="ui-label-temp">表面溫度 (°C)</div>
+                        <div id="stat-temp" class="text-sm sm:text-base text-white font-semibold truncate">0</div>
+                    </div>
+                </div>
+
+                <div class="mb-6">
+                    <div class="text-xs text-hologram mb-3 tracking-widest uppercase flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"></path></svg>
+                        <span id="ui-atm-title">大氣組成成分</span>
+                    </div>
+                    <div id="atm-container" class="space-y-3 bg-white/5 p-4 rounded-lg border border-white/10"></div>
+                </div>
+
+                <div>
+                    <div class="text-xs text-hologram mb-3 tracking-widest uppercase flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        <span id="ui-features-title">重要特徵</span>
+                    </div>
+                    <ul id="planet-features" class="space-y-2 bg-black/30 p-4 rounded-lg border border-white/5"></ul>
+                </div>
+            </div>
+
+            <div class="p-4 sm:p-6 border-t border-white/10 bg-black/80 flex-shrink-0 relative z-10">
+                <button id="btn-back" class="w-full relative group overflow-hidden bg-hologram/10 border border-hologram/50 text-hologram py-3 rounded font-tech tracking-[0.2em] text-sm hover:text-black transition-colors duration-300 backdrop-blur-md">
+                    <span class="absolute inset-0 w-full h-full bg-hologram transform -translate-x-full group-hover:translate-x-0 transition-transform duration-300 ease-out z-0"></span>
+                    <span class="relative z-10 flex items-center justify-center gap-2 font-bold" id="ui-btn-return">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"></path></svg>
+                        返回全域空間
+                    </span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+
+    <script>
+        const TEXTURE_BASE = 'https://cdn.jsdelivr.net/gh/jeromeetienne/threex.planets@master/images/';
+        let currentLang = 'zh'; 
+        let currentEventMode = 'normal'; 
+
+        let discoveredIds = new Set();
+        let currentQuestIndex = 0;
+        let isAllQuestsCompleted = false;
+        
+        const spaceQuests = [
+            { targetId: 'venus', zh: '尋找全太陽系最熱、擁有濃濃二氧化碳大氣的行星！', en: 'Find the hottest planet with a thick CO2 atmosphere!', successZh: '沒錯！金星的失控溫室效應讓它超級熱！', successEn: 'Correct! Venus is scorching due to a runaway greenhouse effect!' },
+            { targetId: 'uranus', zh: '尋找那顆像調皮小孩一樣「躺著自轉」的淡藍色冰巨星！', en: 'Find the pale blue ice giant that rotates on its side!', successZh: '太棒了！天王星的自轉軸傾斜了近98度！', successEn: 'Awesome! Uranus has an axial tilt of 98 degrees!' },
+            { targetId: 'europa', zh: '尋找木星的衛星「歐羅巴」，科學家猜測它冰層下有海洋！', en: 'Find Jupiter\'s moon Europa, it might have a hidden ocean!', successZh: '你找到了！歐羅巴是尋找外星生命的熱門目標！', successEn: 'Found it! Europa is a prime target in the search for life!' },
+            { targetId: 'mars', zh: '尋找被稱為「紅色星球」，也是人類未來可能殖民的地方！', en: 'Find the "Red Planet", a possible future home for humanity!', successZh: '答對了！火星表面佈滿了紅色的氧化鐵！', successEn: 'Right! Mars is covered in red iron oxide!' },
+            { targetId: 'titan', zh: '尋找土星最大的衛星「泰坦」，它居然有液態甲烷湖！', en: 'Find Saturn\'s largest moon Titan, it has liquid methane lakes!', successZh: '厲害！泰坦是唯一擁有濃厚大氣的衛星！', successEn: 'Great! Titan is the only moon with a dense atmosphere!' },
+            { targetId: 'jupiter', zh: '尋找太陽系的老大哥！體積最大、還有大紅斑風暴！', en: 'Find the king of planets! The largest one with the Great Red Spot!', successZh: '找到了！木星的質量是其他行星總和的2.5倍！', successEn: 'Found it! Jupiter is 2.5 times more massive than all other planets combined!' }
+        ];
+
+        // 將所有細部標籤都加入多語系字典
+        const uiDictionary = {
+            zh: { 
+                prompt: '滑鼠滾輪可縮放 / 點擊星體存取檔案', returnBtn: '返回全域空間', noAtmosphere: '偵測不到顯著大氣層 / 處於真空狀態', orbitPrefix: '環繞: ', 
+                evtTitle: '天文事件控制', evtNormal: '正常軌道', evtAlign: '九星連珠', evtCross: '十字象限', 
+                scaleTitle: '體積對比 (以地球為基準)', success: '任務完成！', questLabel: '星際尋寶任務 QUEST', 
+                discovery: '已探索星體 DISCOVERY', galleryTitle: '星體收集圖鑑', earthIcon: '地',
+                lblMass: '質量 (地球=1)', lblDist: '距離 (天文單位)', lblDistMoon: '距離 (公里)', lblRadius: '半徑 (公里)', 
+                lblOrbit: '公轉週期 (天)', lblOrbitStar: '核心溫度 (百萬°C)', lblDay: '自轉週期', lblTemp: '表面溫度 (°C)',
+                lblAtm: '大氣組成成分', lblFeatures: '重要特徵', dbTitle: 'STELLAR DATABASE',
+                // 全破慶祝文字
+                grandTitle: '星際探索大師！', grandMsg: '你已經完成了所有的星際尋寶任務！', 
+                grandSub: '但宇宙的奧秘遠不止於此... 請繼續慢慢探索，打開圖鑑，把剩下的神祕星球全都收集齊全吧！',
+                allClear: '任務已全數完成！自由探索模式啟動。'
+            },
+            en: { 
+                prompt: 'SCROLL TO ZOOM / SELECT TO EXPLORE', returnBtn: 'RETURN TO GLOBAL VIEW', noAtmosphere: 'No significant atmosphere detected', orbitPrefix: 'Orbiting: ', 
+                evtTitle: 'ORBITAL EVENTS', evtNormal: 'Normal Orbit', evtAlign: 'Grand Alignment', evtCross: 'Quadrature', 
+                scaleTitle: 'Volume Scale (vs Earth)', success: 'MISSION COMPLETE!', questLabel: 'SPACE QUEST', 
+                discovery: 'DISCOVERED', galleryTitle: 'STELLAR GALLERY', earthIcon: 'E',
+                lblMass: 'Mass (Earth=1)', lblDist: 'Dist (AU)', lblDistMoon: 'Dist (km)', lblRadius: 'Radius (km)', 
+                lblOrbit: 'Orbit (Days)', lblOrbitStar: 'Core Temp (M°C)', lblDay: 'Day Length', lblTemp: 'Temp (°C)',
+                lblAtm: 'Atmospheric Composition', lblFeatures: 'Notable Features', dbTitle: 'STELLAR DATABASE',
+                // 全破慶祝文字
+                grandTitle: 'MASTER EXPLORER!', grandMsg: 'You have completed all space quests!', 
+                grandSub: 'But the universe holds more secrets... Continue exploring and collect all remaining celestial bodies in your gallery!',
+                allClear: 'All quests completed! Free Exploration Mode active.'
+            }
+        };
+
+        const sunData = {
+            id: 'sun', isPlanet: true, isStar: true, idx: 'S-00', radius: 6, mass: '333000', radiusKm: '696,340', orbitDays: '0', temp: '5,500', auDist: '0.00', gravity: '274.0', scaleRatio: 109,
+            lang: { zh: { name: '太陽', sub: 'The Sun', type: '黃矮星 (G型主序星)', day: '25-35 天', desc: '太陽系的中心恆星，提供了幾乎所有的能量。', features: ['核心核融合反應', '日冕與強烈太陽風', '11年磁場活動週期'], atm: [{ gas: 'H', pct: 73.4 }, { gas: 'He', pct: 24.9 }, { gas: 'O/C/Ne', pct: 1.7 }] }, en: { name: 'The Sun', sub: 'Sol', type: 'Yellow Dwarf (G-type)', day: '25-35 d', desc: 'The star at the center of the Solar System.', features: ['Nuclear fusion core', 'Corona & Solar wind', '11-year magnetic cycle'], atm: [{ gas: 'H', pct: 73.4 }, { gas: 'He', pct: 24.9 }, { gas: 'O/C/Ne', pct: 1.7 }] } }
+        };
+        
+        const planetsData = [
+            { id: 'mercury', isPlanet: true, idx: 'P-01', map: 'mercurymap.jpg', bumpMap: 'mercurybump.jpg', bumpScale: 0.02, atmColor: 0x555555, atmOpacity: 0.02, radius: 0.6, distance: 16.7, speed: 4.15, mass: '0.055', radiusKm: '2,439', orbitDays: '88', temp: '-173 ~ 427', auDist: '0.39', scaleRatio: 0.38,
+              lang: { zh: { name: '水星', sub: 'Mercury', type: '類地行星', day: '58.6 天', desc: '距離太陽最近的行星。無大氣層保溫，日夜溫差為太陽系之最。', features: ['無實質大氣層', '表面佈滿撞擊坑', '富含鐵核心'], atm: [] }, en: { name: 'Mercury', sub: 'Inner Planet', type: 'Terrestrial', day: '58.6 d', desc: 'Closest planet to the Sun.', features: ['No atmosphere', 'Cratered surface', 'Iron core'], atm: [] } }, moons: [] },
+            
+            { id: 'venus', isPlanet: true, idx: 'P-02', map: 'venusmap.jpg', bumpMap: 'venusbump.jpg', bumpScale: 0.02, atmColor: 0xffaa00, atmOpacity: 0.08, radius: 1.2, distance: 26.6, speed: 1.62, mass: '0.815', radiusKm: '6,051', orbitDays: '225', temp: '462', auDist: '0.72', scaleRatio: 0.95,
+              lang: { zh: { name: '金星', sub: 'Venus', type: '類地行星', day: '243 天', desc: '擁有濃厚二氧化碳大氣與硫酸雲層，失控的溫室效應使其成為最熱的行星。', features: ['高壓表面', '濃厚有毒雲層', '逆向自轉'], atm: [{ gas: 'CO₂', pct: 96.5 }, { gas: 'N₂', pct: 3.5 }] }, en: { name: 'Venus', sub: 'Inner Planet', type: 'Terrestrial', day: '243 d', desc: 'Thick, toxic atmosphere causing a runaway greenhouse effect.', features: ['High pressure', 'Toxic thick clouds', 'Retrograde spin'], atm: [{ gas: 'CO₂', pct: 96.5 }, { gas: 'N₂', pct: 3.5 }] } }, moons: [] },
+            
+            { id: 'earth', isPlanet: true, idx: 'P-03', map: 'earthmap1k.jpg', bumpMap: 'earthbump1k.jpg', bumpScale: 0.05, cloudMap: 'earthcloudmap.jpg', cloudTrans: 'earthcloudmaptrans.jpg', atmColor: 0x00aaff, atmOpacity: 0.08, radius: 1.3, distance: 35.0, speed: 1.00, mass: '1.000', radiusKm: '6,371', orbitDays: '365.2', temp: '-89 ~ 58', auDist: '1.00', scaleRatio: 1.0,
+              lang: { zh: { name: '地球', sub: 'Earth', type: '類地行星', day: '24 小時', desc: '我們獨一無二的家園。表面有 71% 被液態水覆蓋，擁有豐富生態系統。', features: ['存在生命', '豐富液態水', '強大磁場'], atm: [{ gas: 'N₂', pct: 78.1 }, { gas: 'O₂', pct: 20.9 }, { gas: 'Ar', pct: 0.9 }] }, en: { name: 'Earth', sub: 'Our Home', type: 'Terrestrial', day: '24 h', desc: 'Our unique home planet.', features: ['Life sustaining', 'Liquid water', 'Magnetic field'], atm: [{ gas: 'N₂', pct: 78.1 }, { gas: 'O₂', pct: 20.9 }, { gas: 'Ar', pct: 0.9 }] } }, 
+              moons: [{ id: 'luna', isPlanet: false, idx: 'M-03A', map: 'moonmap1k.jpg', bumpMap: 'moonbump1k.jpg', bumpScale: 0.02, size: 0.35, dist: 2.5, speed: 13.3, color: 0xcccccc, mass: '0.012', radiusKm: '1,737', orbitDays: '27.3', temp: '-173 ~ 117', gravity: '384,400', scaleRatio: 0.27, lang: { zh: { name: '月球', sub: 'Luna', type: '天然衛星', day: '27.3 天', desc: '地球唯一的天然衛星。因潮汐鎖定，永遠以同一面朝向地球。', features: ['潮汐鎖定', '滿佈撞擊坑', '引發海洋潮汐'], atm: [] }, en: { name: 'The Moon', sub: 'Luna', type: 'Natural Satellite', day: '27.3 d', desc: 'Earth\'s only natural satellite.', features: ['Tidally locked', 'Heavily cratered', 'Ocean tides'], atm: [] } } }] },
+            
+            { id: 'mars', isPlanet: true, idx: 'P-04', map: 'marsmap1k.jpg', bumpMap: 'marsbump1k.jpg', bumpScale: 0.05, atmColor: 0xff3300, atmOpacity: 0.05, radius: 0.7, distance: 50.6, speed: 0.53, mass: '0.107', radiusKm: '3,389', orbitDays: '687', temp: '-153 ~ 20', auDist: '1.52', scaleRatio: 0.53,
+              lang: { zh: { name: '火星', sub: 'Mars', type: '類地行星', day: '24.6 小時', desc: '被稱為「紅色星球」。雖然寒冷且大氣稀薄，但地表滿佈古老河床遺跡。', features: ['最高火山:奧林帕斯', '紅色氧化鐵地表', '未來殖民目標'], atm: [{ gas: 'CO₂', pct: 95.3 }, { gas: 'N₂', pct: 2.7 }] }, en: { name: 'Mars', sub: 'Red Planet', type: 'Terrestrial', day: '24.6 h', desc: 'Known as the "Red Planet".', features: ['Olympus Mons', 'Iron oxide rust', 'Future colony'], atm: [{ gas: 'CO₂', pct: 95.3 }, { gas: 'N₂', pct: 2.7 }] } }, 
+              moons: [] }, 
+            
+            { id: 'jupiter', isPlanet: true, idx: 'P-05', map: 'jupitermap.jpg', atmColor: 0xddaa88, atmOpacity: 0.08, radius: 3.2, distance: 161.0, speed: 0.084, mass: '317.8', radiusKm: '69,911', orbitDays: '4,333', temp: '-108', auDist: '5.20', scaleRatio: 11.2,
+              lang: { zh: { name: '木星', sub: 'Jupiter', type: '氣體巨星', day: '9.9 小時', desc: '太陽系之王，質量是其他行星總和的 2.5 倍。擁有大紅斑超級風暴。', features: ['體積質量最大', '大紅斑風暴', '強大輻射帶'], atm: [{ gas: 'H₂', pct: 89.8 }, { gas: 'He', pct: 10.2 }] }, en: { name: 'Jupiter', sub: 'Gas Giant', type: 'Gas Giant', day: '9.9 h', desc: 'The king of the solar system.', features: ['Most massive', 'Great Red Spot', 'Strong radiation'], atm: [{ gas: 'H₂', pct: 89.8 }, { gas: 'He', pct: 10.2 }] } }, 
+              moons: [
+                  { id: 'europa', isPlanet: false, idx: 'M-05B', size: 0.15, dist: 5.0, speed: 5.0, color: 0xeeeeee, mass: '0.008', radiusKm: '1,560', orbitDays: '3.5', temp: '-160', gravity: '670,900', scaleRatio: 0.24, lang: { zh: { name: '歐羅巴', sub: 'Europa', type: '冰衛星', day: '3.5 天', desc: '冰封的表面下隱藏著全球性液態海洋，是尋找外星生命的最熱門目標。', features: ['冰殼表面', '地下海洋', '可能存在生命'], atm: [{ gas: 'O₂', pct: 100 }] }, en: { name: 'Europa', sub: 'Jupiter II', type: 'Ice Satellite', day: '3.5 d', desc: 'Hides a global ocean of liquid water under its icy crust.', features: ['Icy crust', 'Subsurface ocean', 'Possible life'], atm: [{ gas: 'O₂', pct: 100 }] } } },
+                  { id: 'ganymede', isPlanet: false, idx: 'M-05C', size: 0.22, dist: 6.0, speed: 2.5, color: 0xaaaa99, mass: '0.024', radiusKm: '2,634', orbitDays: '7.1', temp: '-163', gravity: '1,070,400', scaleRatio: 0.41, lang: { zh: { name: '蓋尼米德', sub: 'Ganymede', type: '巨大冰衛星', day: '7.1 天', desc: '太陽系中最大的衛星，也是唯一擁有自身磁場的衛星。', features: ['太陽系最大衛星', '擁有自身磁場', '冰岩混合表面'], atm: [{ gas: 'O₂', pct: 100 }] }, en: { name: 'Ganymede', sub: 'Jupiter III', type: 'Giant Moon', day: '7.1 d', desc: 'The largest moon in the solar system.', features: ['Largest moon', 'Has magnetic field', 'Ice-rock surface'], atm: [{ gas: 'O₂', pct: 100 }] } } }
+              ] },
+            
+            { id: 'saturn', isPlanet: true, idx: 'P-06', map: 'saturnmap.jpg', atmColor: 0xeeddcc, atmOpacity: 0.08, radius: 2.7, distance: 292.4, speed: 0.034, mass: '95.16', radiusKm: '58,232', orbitDays: '10,759', temp: '-139', auDist: '9.58', hasRings: true, scaleRatio: 9.4,
+              lang: { zh: { name: '土星', sub: 'Saturn', type: '氣體巨星', day: '10.7 小時', desc: '以其壯麗的冰雪行星環聞名。平均密度甚至低於水。', features: ['華麗冰晶光環', '密度低於水', '極地六邊形風暴'], atm: [{ gas: 'H₂', pct: 96.3 }, { gas: 'He', pct: 3.2 }] }, en: { name: 'Saturn', sub: 'Ringed Planet', type: 'Gas Giant', day: '10.7 h', desc: 'Famous for its spectacular ring system.', features: ['Spectacular rings', 'Density < water', 'Polar hexagon'], atm: [{ gas: 'H₂', pct: 96.3 }, { gas: 'He', pct: 3.2 }] } }, 
+              moons: [
+                  { id: 'titan', isPlanet: false, idx: 'M-06B', size: 0.38, dist: 5.8, speed: 1.0, color: 0xffaa55, mass: '0.022', radiusKm: '2,574', orbitDays: '15.9', temp: '-179', gravity: '1,221,870', scaleRatio: 0.40, lang: { zh: { name: '泰坦', sub: 'Titan', type: '類地衛星', day: '15.9 天', desc: '太陽系第二大衛星，唯一擁有濃厚大氣層的衛星。表面有液態甲烷湖泊。', features: ['濃厚氮氣大氣', '液態甲烷湖', '富含有機物'], atm: [{ gas: 'N₂', pct: 98.4 }, { gas: 'CH₄', pct: 1.4 }] }, en: { name: 'Titan', sub: 'Saturn VI', type: 'Terrestrial Moon', day: '15.9 d', desc: 'Only moon with a dense atmosphere.', features: ['Dense N2 atmosphere', 'Methane lakes', 'Rich in organics'], atm: [{ gas: 'N₂', pct: 98.4 }, { gas: 'CH₄', pct: 1.4 }] } } }
+              ] },
+            
+            { id: 'uranus', isPlanet: true, idx: 'P-07', map: 'uranusmap.jpg', atmColor: 0x66ccff, atmOpacity: 0.08, radius: 1.9, distance: 581.6, speed: 0.012, mass: '14.54', radiusKm: '25,362', orbitDays: '30,688', temp: '-197', auDist: '19.22', scaleRatio: 4.0,
+              lang: { zh: { name: '天王星', sub: 'Uranus', type: '冰巨星', day: '17.2 小時', desc: '大氣中的甲烷賦予它淡藍色。自轉軸極度傾斜，幾乎是「躺」著自轉。', features: ['側躺自轉', '富含冰與甲烷', '黯淡星環'], atm: [{ gas: 'H₂', pct: 82.5 }, { gas: 'He', pct: 15.2 }, { gas: 'CH₄', pct: 2.3 }] }, en: { name: 'Uranus', sub: 'Ice Giant', type: 'Ice Giant', day: '17.2 h', desc: 'Axis of rotation is tilted sideways.', features: ['Sideways rotation', 'Icy mantle', 'Faint rings'], atm: [{ gas: 'H₂', pct: 82.5 }, { gas: 'He', pct: 15.2 }, { gas: 'CH₄', pct: 2.3 }] } }, moons: [] },
+            
+            { id: 'neptune', isPlanet: true, idx: 'P-08', map: 'neptunemap.jpg', atmColor: 0x3366ff, atmOpacity: 0.1, radius: 1.8, distance: 906.5, speed: 0.006, mass: '17.15', radiusKm: '24,622', orbitDays: '60,182', temp: '-201', auDist: '30.05', scaleRatio: 3.8,
+              lang: { zh: { name: '海王星', sub: 'Neptune', type: '冰巨星', day: '16.1 小時', desc: '太陽系最外圍行星，內部熱能驅動著強烈的超音速風暴。', features: ['超音速風暴', '深藍色大氣', '最遠行星'], atm: [{ gas: 'H₂', pct: 80.0 }, { gas: 'He', pct: 19.0 }, { gas: 'CH₄', pct: 1.0 }] }, en: { name: 'Neptune', sub: 'Ice Giant', type: 'Ice Giant', day: '16.1 h', desc: 'Outermost planet. Intense supersonic storms.', features: ['Supersonic winds', 'Deep blue color', 'Outermost planet'], atm: [{ gas: 'H₂', pct: 80.0 }, { gas: 'He', pct: 19.0 }, { gas: 'CH₄', pct: 1.0 }] } }, moons: [] }
+        ];
+
+        // 圖鑑系統所需之所有目標清單
+        let allTargets = [];
+        allTargets.push(sunData);
+        planetsData.forEach(p => {
+            allTargets.push(p);
+            p.moons.forEach(m => allTargets.push(m));
+        });
+        const totalDiscoverableCount = allTargets.length;
+
+        let scene, camera, renderer, composer, controls;
+        let planetSystems = []; 
+        let interactableMeshes = []; 
+        let time = 0;
+        let isPaused = false;
+        let selectedTargetId = null;
+        let sunMesh, sunLabel; 
+        let asteroidGroup, nebulaGroup; 
+
+        // 音樂控制
+        const bgMusic = document.getElementById('bg-music');
+        bgMusic.volume = 0.4;
+        let isMusicPlaying = false;
+        let userInteracted = false;
+
+        const GLOBAL_SPEED_MULTIPLIER = 0.005; 
+
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        const manager = new THREE.LoadingManager();
+        const textureLoader = new THREE.TextureLoader(manager);
+        textureLoader.setCrossOrigin('anonymous');
+
+        manager.onLoad = function () {
+            const loadingScreen = document.getElementById('loading-screen');
+            loadingScreen.style.opacity = '0';
+            setTimeout(() => { loadingScreen.style.display = 'none'; }, 1000);
+            
+            const discoveryTotal = document.getElementById('discovery-total');
+            if (discoveryTotal) discoveryTotal.innerText = totalDiscoverableCount;
+            updateQuestUI(); 
+        };
+
+        manager.onProgress = function (url, itemsLoaded, itemsTotal) {
+            const progress = (itemsLoaded / itemsTotal) * 100;
+            const loadingBar = document.getElementById('loading-bar');
+            const loadingText = document.getElementById('loading-text');
+            if (loadingBar) loadingBar.style.width = progress + '%';
+            if (loadingText) loadingText.innerText = Math.round(progress) + '%';
+        };
+
+        window.onload = function() {
+            initThreeJS();
+            setupInteractions();
+            setupLanguageSwitch();
+            setupEvents();
+            animate();
+            
+            // 使用者首次互動時嘗試播放音樂
+            document.body.addEventListener('pointerdown', tryPlayMusic, { once: true });
+        };
+
+        function tryPlayMusic() {
+            if(!userInteracted) {
+                userInteracted = true;
+                toggleMusic();
+            }
+        }
+
+        function toggleMusic() {
+            const btn = document.getElementById('btn-music');
+            if (isMusicPlaying) {
+                bgMusic.pause();
+                btn.classList.remove('playing-music');
+                btn.classList.add('paused-music');
+            } else {
+                bgMusic.play().then(() => {
+                    btn.classList.remove('paused-music');
+                    btn.classList.add('playing-music');
+                }).catch(e => console.log("Auto-play prevented", e));
+            }
+            isMusicPlaying = !isMusicPlaying;
+        }
+
+        function recordDiscovery(id) {
+            if (!discoveredIds.has(id)) {
+                discoveredIds.add(id);
+                const count = discoveredIds.size;
+                const countEl = document.getElementById('discovery-count');
+                const barEl = document.getElementById('discovery-bar');
+                if (countEl) countEl.innerText = count;
+                if (barEl) {
+                    barEl.style.width = `${(count / totalDiscoverableCount) * 100}%`;
+                    barEl.classList.add('bg-hologram-success', 'shadow-[0_0_15px_#00ff66]');
+                    setTimeout(() => barEl.classList.remove('bg-hologram-success', 'shadow-[0_0_15px_#00ff66]'), 1000);
+                }
+            }
+        }
+
+        // --- 打開/關閉圖鑑與渲染網格 ---
+        function openGallery() {
+            const modal = document.getElementById('gallery-modal');
+            const grid = document.getElementById('gallery-grid');
+            if (!modal || !grid) return;
+            grid.innerHTML = '';
+            
+            allTargets.forEach(target => {
+                const isUnlocked = discoveredIds.has(target.id);
+                const langData = target.lang[currentLang];
+                
+                let visualStyle = '';
+                if (target.id === 'sun') {
+                    visualStyle = `background-image: url('${TEXTURE_BASE}sunmap.jpg')`;
+                } else if (target.map) {
+                    visualStyle = `background-image: url('${TEXTURE_BASE}${target.map}')`;
+                } else if (target.color) {
+                    visualStyle = `background-color: #${target.color.toString(16).padStart(6, '0')}`;
+                }
+
+                const card = document.createElement('div');
+                card.className = `relative p-4 min-h-[160px] sm:min-h-[180px] rounded-lg border flex flex-col items-center justify-center overflow-hidden transition-all duration-300 ${isUnlocked ? 'border-hologram/50 bg-black/40 cursor-pointer hover:shadow-[0_0_20px_#00c3ff] hover:-translate-y-1' : 'border-white/10 bg-white/5 opacity-50'}`;
+                
+                if (isUnlocked) {
+                    card.innerHTML = `
+                        <div class="absolute inset-0 bg-cover bg-center opacity-30 mix-blend-screen" style="${visualStyle}; filter: blur(4px);"></div>
+                        <div class="w-14 h-14 sm:w-16 sm:h-16 rounded-full shadow-[0_0_15px_rgba(255,255,255,0.2)] mb-3 bg-cover bg-center relative z-10 flex-shrink-0" style="${visualStyle}"></div>
+                        <div class="relative z-10 text-center px-1">
+                            <div class="font-bold text-white tracking-wider text-sm sm:text-base leading-tight">${langData.name}</div>
+                            <div class="font-tech text-hologram text-[10px] sm:text-xs tracking-widest uppercase mt-1">${target.idx}</div>
+                        </div>
+                    `;
+                    card.onclick = () => {
+                        closeGallery();
+                        const mesh = interactableMeshes.find(m => m.userData.targetData.id === target.id);
+                        if(mesh) focusOnTarget(mesh);
+                    };
+                } else {
+                    card.innerHTML = `
+                        <div class="w-14 h-14 sm:w-16 sm:h-16 rounded-full border-2 border-dashed border-gray-600 mb-3 flex flex-shrink-0 items-center justify-center">
+                            <span class="text-gray-500 text-2xl sm:text-3xl font-tech">?</span>
+                        </div>
+                        <div class="relative z-10 text-center">
+                            <div class="font-bold text-gray-500 tracking-wider text-sm sm:text-base leading-tight">???</div>
+                            <div class="font-tech text-gray-600 text-[10px] sm:text-xs tracking-widest uppercase mt-1">${target.idx}</div>
+                        </div>
+                    `;
+                }
+                grid.appendChild(card);
+            });
+            
+            modal.classList.remove('opacity-0', 'pointer-events-none');
+        }
+
+        function closeGallery() {
+            const modal = document.getElementById('gallery-modal');
+            if (modal) modal.classList.add('opacity-0', 'pointer-events-none');
+        }
+
+        function updateQuestUI() {
+            if (isAllQuestsCompleted) {
+                const textEl = document.getElementById('quest-text');
+                const headerEl = document.getElementById('quest-header');
+                if(textEl) textEl.innerText = uiDictionary[currentLang].allClear;
+                if(textEl) textEl.className = "text-hologram-success text-sm sm:text-base font-bold drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]";
+                if(headerEl) headerEl.style.display = 'none';
+                return;
+            }
+
+            const quest = spaceQuests[currentQuestIndex];
+            const textEl = document.getElementById('quest-text');
+            if(textEl) textEl.innerText = quest[currentLang];
+        }
+
+        function checkQuestComplete(id) {
+            if (isAllQuestsCompleted) return;
+
+            const quest = spaceQuests[currentQuestIndex];
+            if (quest.targetId === id) {
+                // 檢查是否是最後一個任務
+                if (currentQuestIndex === spaceQuests.length - 1) {
+                    isAllQuestsCompleted = true;
+                    showGrandCelebration();
+                    updateQuestUI();
+                } else {
+                    showSuccessOverlay(currentLang === 'zh' ? quest.successZh : quest.successEn);
+                    currentQuestIndex++;
+                    setTimeout(updateQuestUI, 2000); 
+                }
+            }
+        }
+
+        function showSuccessOverlay(msg) {
+            const overlay = document.getElementById('success-overlay');
+            const questBox = document.getElementById('quest-container');
+            const msgEl = document.getElementById('success-msg');
+            if(msgEl) msgEl.innerText = msg;
+            
+            if(overlay) overlay.classList.remove('opacity-0', 'pointer-events-none');
+            if(questBox) questBox.classList.add('celebrate-pulse');
+            
+            setTimeout(() => {
+                if(overlay) overlay.classList.add('opacity-0', 'pointer-events-none');
+                if(questBox) questBox.classList.remove('celebrate-pulse');
+            }, 3000);
+        }
+
+        function showGrandCelebration() {
+            const overlay = document.getElementById('grand-celebration');
+            const content = document.getElementById('grand-content');
+            
+            if(overlay && content) {
+                overlay.classList.remove('opacity-0', 'pointer-events-none');
+                content.classList.add('grand-animate');
+                
+                // 播放特殊音效或增加音樂音量
+                if(isMusicPlaying) {
+                    gsap.to(bgMusic, { volume: 0.8, duration: 1 });
+                    setTimeout(() => gsap.to(bgMusic, { volume: 0.4, duration: 2 }), 6000);
+                }
+
+                setTimeout(() => {
+                    overlay.classList.add('opacity-0', 'pointer-events-none');
+                    content.classList.remove('grand-animate');
+                }, 6000);
+            }
+        }
+
+        function initThreeJS() {
+            const container = document.getElementById('canvas-container');
+
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x000000, 0.00015); 
+
+            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 8000);
+            camera.position.set(0, 150, 250); 
+
+            // 掛載在相機上的探照燈，確保觀察暗面時也能看見細節
+            const cameraLight = new THREE.PointLight(0xffffff, 0.35);
+            camera.add(cameraLight);
+            scene.add(camera);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap; 
+            renderer.toneMapping = THREE.ACESFilmicToneMapping; 
+            renderer.toneMappingExposure = 1.0; 
+            container.appendChild(renderer.domElement);
+
+            const renderScene = new THREE.RenderPass(scene, camera);
+            const bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.0, 0.5, 0.85);
+            
+            composer = new THREE.EffectComposer(renderer);
+            composer.addPass(renderScene);
+            composer.addPass(bloomPass);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.maxDistance = 4000;
+            controls.minDistance = 2; 
+            controls.autoRotate = true;
+            controls.autoRotateSpeed = 0.15;
+
+            // 整體環境光亮度
+            const ambientLight = new THREE.AmbientLight(0x1a1a2e, 0.6); 
+            scene.add(ambientLight);
+            const hemiLight = new THREE.HemisphereLight(0x222233, 0x050510, 0.4); 
+            scene.add(hemiLight);
+            
+            const sunLight = new THREE.PointLight(0xfff5e6, 3.5, 0); 
+            sunLight.castShadow = true;
+            sunLight.shadow.mapSize.width = 1024; 
+            sunLight.shadow.mapSize.height = 1024;
+            sunLight.shadow.bias = -0.001; 
+            scene.add(sunLight);
+
+            const polarGrid = new THREE.PolarGridHelper( 1200, 32, 16, 128, 0x003366, 0x001122 );
+            polarGrid.position.y = -0.1; 
+            polarGrid.material.transparent = true;
+            polarGrid.material.opacity = 0.15;
+            scene.add( polarGrid );
+
+            createStarfieldAndNebula();
+            createAsteroidBelt();
+            createSun();
+            createPlanets();
+
+            window.addEventListener('resize', onWindowResize, false);
+        }
+
+        function createAsteroidBelt() {
+            asteroidGroup = new THREE.Group();
+            const asteroidGeo = new THREE.BufferGeometry();
+            const count = 3000; 
+            const positions = new Float32Array(count * 3);
+            const sizes = new Float32Array(count);
+
+            const innerRadius = 70;
+            const outerRadius = 120;
+
+            for(let i = 0; i < count; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const radius = innerRadius + Math.sqrt(Math.random()) * (outerRadius - innerRadius);
+                const yOffset = (Math.random() - 0.5) * 8 * (1 - Math.abs(radius - (innerRadius+outerRadius)/2) / ((outerRadius-innerRadius)/2)); 
+
+                positions[i*3] = Math.cos(angle) * radius;
+                positions[i*3+1] = yOffset;
+                positions[i*3+2] = Math.sin(angle) * radius;
+
+                sizes[i] = Math.random() * 0.4 + 0.1;
+            }
+
+            asteroidGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            asteroidGeo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+            const asteroidMat = new THREE.PointsMaterial({
+                color: 0x887766, size: 0.6, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending
+            });
+            
+            const asteroids = new THREE.Points(asteroidGeo, asteroidMat);
+            asteroidGroup.add(asteroids);
+
+            const ringGeo = new THREE.RingGeometry(innerRadius, outerRadius, 64);
+            const ringMat = new THREE.MeshBasicMaterial({ color: 0x443322, side: THREE.DoubleSide, transparent: true, opacity: 0.05, blending: THREE.AdditiveBlending });
+            const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+            ringMesh.rotation.x = Math.PI / 2;
+            asteroidGroup.add(ringMesh);
+
+            scene.add(asteroidGroup);
+        }
+
+        function createStarfieldAndNebula() {
+            nebulaGroup = new THREE.Group();
+
+            const starsGeo = new THREE.BufferGeometry();
+            const count = 12000; 
+            const positions = new Float32Array(count * 3);
+            const colors = new Float32Array(count * 3);
+
+            for(let i = 0; i < count; i++) {
+                const r = 1000 + Math.random() * 4000;
+                const theta = 2 * Math.PI * Math.random();
+                const phi = Math.acos(2 * Math.random() - 1);
+                positions[i*3] = r * Math.sin(phi) * Math.cos(theta);
+                positions[i*3+1] = r * Math.sin(phi) * Math.sin(theta);
+                positions[i*3+2] = r * Math.cos(phi);
+
+                const c = new THREE.Color();
+                c.setHSL(0.55 + Math.random() * 0.1, 0.8, 0.5 + Math.random() * 0.5);
+                colors[i*3] = c.r; colors[i*3+1] = c.g; colors[i*3+2] = c.b;
+            }
+            starsGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            starsGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            const starsMat = new THREE.PointsMaterial({ size: 1.5, vertexColors: true, transparent: true, opacity: 0.8 });
+            nebulaGroup.add(new THREE.Points(starsGeo, starsMat));
+
+            const bandGeo = new THREE.BufferGeometry();
+            const b_count = 8000; 
+            const b_pos = new Float32Array(b_count * 3);
+            const b_col = new Float32Array(b_count * 3);
+
+            for(let i = 0; i < b_count; i++) {
+                const r = 600 + Math.random() * 3000;
+                const theta = 2 * Math.PI * Math.random();
+                const yOffset = (Math.random() - 0.5) * 200; 
+                
+                b_pos[i*3] = Math.cos(theta) * r;
+                b_pos[i*3+1] = yOffset + Math.cos(theta)*800; 
+                b_pos[i*3+2] = Math.sin(theta) * r;
+
+                const c = new THREE.Color();
+                c.setHSL(0.6 + Math.random() * 0.2, 0.8, 0.5 + Math.random() * 0.3);
+                b_col[i*3] = c.r; b_col[i*3+1] = c.g; b_col[i*3+2] = c.b;
+            }
+            bandGeo.setAttribute('position', new THREE.BufferAttribute(b_pos, 3));
+            bandGeo.setAttribute('color', new THREE.BufferAttribute(b_col, 3));
+            const bandMat = new THREE.PointsMaterial({ size: 2.0, vertexColors: true, transparent: true, opacity: 0.2, blending: THREE.AdditiveBlending });
+            nebulaGroup.add(new THREE.Points(bandGeo, bandMat));
+
+            const canvas = document.createElement('canvas');
+            canvas.width = 128; canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+            grad.addColorStop(0, 'rgba(255,255,255,1)');
+            grad.addColorStop(0.3, 'rgba(255,255,255,0.4)');
+            grad.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = grad; ctx.fillRect(0,0,128,128);
+            const particleTex = new THREE.CanvasTexture(canvas);
+
+            const nebulaGeo = new THREE.BufferGeometry();
+            const n_count = 800; 
+            const n_pos = new Float32Array(n_count * 3);
+            const n_col = new Float32Array(n_count * 3);
+
+            for(let i = 0; i < n_count; i++) {
+                const r = 800 + Math.random() * 3200; 
+                const theta = 2 * Math.PI * Math.random();
+                const yOffset = (Math.random() - 0.5) * 1200; 
+                
+                n_pos[i*3] = Math.cos(theta) * r;
+                n_pos[i*3+1] = yOffset + Math.cos(theta)*800; 
+                n_pos[i*3+2] = Math.sin(theta) * r;
+
+                const colChoices = [new THREE.Color(0x113388), new THREE.Color(0x331188), new THREE.Color(0x115566), new THREE.Color(0x441133)];
+                const col = colChoices[Math.floor(Math.random() * colChoices.length)];
+                n_col[i*3] = col.r; n_col[i*3+1] = col.g; n_col[i*3+2] = col.b;
+            }
+            nebulaGeo.setAttribute('position', new THREE.BufferAttribute(n_pos, 3));
+            nebulaGeo.setAttribute('color', new THREE.BufferAttribute(n_col, 3));
+
+            const nebulaMat = new THREE.PointsMaterial({
+                size: 1000, map: particleTex, vertexColors: true, transparent: true, opacity: 0.04, blending: THREE.AdditiveBlending, depthWrite: false
+            });
+            nebulaGroup.add(new THREE.Points(nebulaGeo, nebulaMat));
+
+            scene.add(nebulaGroup);
+        }
+
+        // 用來保證不可見又可被點擊的完美材質
+        const hitMaterial = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
+
+        function createSun() {
+            const sunTexture = textureLoader.load(TEXTURE_BASE + 'sunmap.jpg');
+            
+            const sunGeometry = new THREE.SphereGeometry(sunData.radius, 64, 64);
+            const sunMaterial = new THREE.MeshStandardMaterial({
+                map: sunTexture, emissive: 0xff8800, emissiveMap: sunTexture, emissiveIntensity: 3.0, color: 0xffffff, roughness: 1
+            });
+            sunMesh = new THREE.Mesh(sunGeometry, sunMaterial);
+            
+            sunMesh.userData = { targetData: sunData, parentId: null };
+            scene.add(sunMesh);
+
+            // 動態放大碰撞體，保證邊緣也超好點擊
+            const sunHitMesh = new THREE.Mesh(new THREE.SphereGeometry(sunData.radius * 2.5, 16, 16), hitMaterial);
+            sunHitMesh.userData = { targetData: sunData, parentId: null, originalMesh: sunMesh };
+            sunMesh.add(sunHitMesh);
+            interactableMeshes.push(sunHitMesh);
+
+            const glowGeometry = new THREE.SphereGeometry(sunData.radius * 1.05, 64, 64);
+            const glowMaterial = new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, side: THREE.BackSide });
+            sunMesh.add(new THREE.Mesh(glowGeometry, glowMaterial));
+
+            const canvas = document.createElement('canvas');
+            canvas.width = 256; canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+            const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+            gradient.addColorStop(0, 'rgba(255, 220, 100, 1)');
+            gradient.addColorStop(0.2, 'rgba(255, 150, 50, 0.8)');
+            gradient.addColorStop(0.5, 'rgba(255, 80, 0, 0.3)');
+            gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = gradient; ctx.fillRect(0, 0, 256, 256);
+            
+            const spriteMat = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false });
+            const glowSprite = new THREE.Sprite(spriteMat);
+            glowSprite.scale.set(38, 38, 1);
+            sunMesh.add(glowSprite);
+
+            sunLabel = createLabel(sunData.lang[currentLang].name, null, true);
+            sunLabel.position.y = sunData.radius + 2.5;
+            sunLabel.userData = { targetData: sunData, parentId: null, originalMesh: sunMesh };
+            interactableMeshes.push(sunLabel);
+            scene.add(sunLabel);
+        }
+
+        function createLabel(text, existingSprite = null, isSun = false) {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = 256; canvas.height = 64;
+            
+            const isEn = /^[A-Za-z\s]+$/.test(text);
+            ctx.font = isEn ? 'bold 30px "Rajdhani", sans-serif' : 'bold 28px "Noto Sans TC", sans-serif';
+            
+            const mainColor = isSun ? 'rgba(255, 150, 0, 0.9)' : 'rgba(0, 240, 255, 0.9)';
+            const shadowColor = isSun ? 'rgba(255, 100, 0, 0.8)' : 'rgba(0, 240, 255, 0.8)';
+            const lineColor = isSun ? 'rgba(255, 150, 0, 0.5)' : 'rgba(0, 240, 255, 0.5)';
+
+            ctx.fillStyle = mainColor;
+            ctx.textAlign = 'center';
+            ctx.shadowColor = shadowColor;
+            ctx.shadowBlur = 10;
+            ctx.fillText(isEn ? text.toUpperCase() : text, 128, 40);
+            
+            ctx.strokeStyle = lineColor;
+            ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(60, 48); ctx.lineTo(196, 48); ctx.stroke();
+
+            const texture = new THREE.CanvasTexture(canvas);
+            
+            if (existingSprite) {
+                existingSprite.material.map.dispose();
+                existingSprite.material.map = texture;
+                existingSprite.material.needsUpdate = true;
+                return existingSprite;
+            } else {
+                const spriteMaterial = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false });
+                const sprite = new THREE.Sprite(spriteMaterial);
+                sprite.scale.set(isSun ? 15 : 10, isSun ? 3.75 : 2.5, 1);
+                return sprite;
+            }
+        }
+
+        function createPlanets() {
+            planetsData.forEach(pData => {
+                const orbitGroup = new THREE.Group();
+                scene.add(orbitGroup);
+
+                const matOptions = { 
+                    map: textureLoader.load(TEXTURE_BASE + pData.map), 
+                    roughness: pData.id === 'earth' ? 0.8 : 0.85, 
+                    metalness: pData.id === 'earth' ? 0.02 : 0.05 
+                };
+                if(pData.bumpMap) { matOptions.bumpMap = textureLoader.load(TEXTURE_BASE + pData.bumpMap); matOptions.bumpScale = pData.bumpScale || 0.05; }
+
+                const geometry = new THREE.SphereGeometry(pData.radius, 64, 64);
+                const material = new THREE.MeshStandardMaterial(matOptions);
+                const pMesh = new THREE.Mesh(geometry, material);
+                
+                pMesh.castShadow = true; pMesh.receiveShadow = true; 
+                pMesh.userData = { targetData: pData, parentId: null }; 
+                orbitGroup.add(pMesh);
+
+                // 動態放大碰撞體：距離越遠（海王星），碰撞體放大的倍數越多 (激進放大)
+                let pMultiplier = 6;
+                if (pData.distance > 500) pMultiplier = 30; // 天王星
+                if (pData.distance > 800) pMultiplier = 50; // 海王星
+                
+                const pHitMesh = new THREE.Mesh(new THREE.SphereGeometry(pData.radius * pMultiplier, 16, 16), hitMaterial);
+                pHitMesh.userData = { targetData: pData, parentId: null, originalMesh: pMesh };
+                pMesh.add(pHitMesh);
+                interactableMeshes.push(pHitMesh);
+
+                let cloudMesh = null;
+                if(pData.cloudMap) {
+                    const cloudGeo = new THREE.SphereGeometry(pData.radius * 1.015, 64, 64);
+                    
+                    const cloudMatOptions = {
+                        map: textureLoader.load(TEXTURE_BASE + pData.cloudMap),
+                        transparent: true,
+                        opacity: 0.85, 
+                        blending: THREE.NormalBlending,
+                        depthWrite: false
+                    };
+                    
+                    if (pData.cloudTrans) {
+                        cloudMatOptions.alphaMap = textureLoader.load(TEXTURE_BASE + pData.cloudTrans);
+                    } else {
+                        cloudMatOptions.blending = THREE.AdditiveBlending;
+                        cloudMatOptions.opacity = 0.25; 
+                    }
+                    
+                    const cloudMat = new THREE.MeshLambertMaterial(cloudMatOptions);
+                    cloudMesh = new THREE.Mesh(cloudGeo, cloudMat);
+                    cloudMesh.receiveShadow = true; 
+                    pMesh.add(cloudMesh);
+                }
+
+                if (pData.atmColor) {
+                    const atmosGeo = new THREE.SphereGeometry(pData.radius * 1.04, 32, 32);
+                    const atmosMat = new THREE.MeshStandardMaterial({ color: pData.atmColor, transparent: true, opacity: pData.atmOpacity, blending: THREE.AdditiveBlending, side: THREE.BackSide, depthWrite: false });
+                    pMesh.add(new THREE.Mesh(atmosGeo, atmosMat));
+                }
+
+                if (pData.hasRings) {
+                    const ringGeo = new THREE.RingGeometry(pData.radius * 1.3, pData.radius * 2.2, 128);
+                    const ringMat = new THREE.MeshStandardMaterial({ color: 0xddccaa, side: THREE.DoubleSide, transparent: true, opacity: 0.7, roughness: 0.8 });
+                    const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+                    ringMesh.rotation.x = Math.PI / 2 + 0.2;
+                    ringMesh.castShadow = true; ringMesh.receiveShadow = true; 
+                    pMesh.add(ringMesh);
+                }
+
+                const moonsList = [];
+                pData.moons.forEach(mData => {
+                    const mMatOptions = { roughness: 0.9 };
+                    if(mData.map) mMatOptions.map = textureLoader.load(TEXTURE_BASE + mData.map); else mMatOptions.color = mData.color;
+                    if(mData.bumpMap) { mMatOptions.bumpMap = textureLoader.load(TEXTURE_BASE + mData.bumpMap); mMatOptions.bumpScale = mData.bumpScale || 0.05; }
+
+                    const mGeo = new THREE.SphereGeometry(mData.size, 32, 32);
+                    const mMat = new THREE.MeshStandardMaterial(mMatOptions);
+                    const mMesh = new THREE.Mesh(mGeo, mMat);
+                    
+                    mMesh.castShadow = true; mMesh.receiveShadow = true;
+                    mMesh.userData = { targetData: mData, parentId: pData.id, parentPlanet: pData };
+                    
+                    let mMultiplier = 6;
+                    if (pData.distance > 150) mMultiplier = 15; // 木星衛星
+                    if (pData.distance > 250) mMultiplier = 25; // 土星衛星
+                    const mHitMesh = new THREE.Mesh(new THREE.SphereGeometry(mData.size * mMultiplier, 16, 16), hitMaterial);
+                    mHitMesh.userData = { targetData: mData, parentId: pData.id, parentPlanet: pData, originalMesh: mMesh };
+                    mMesh.add(mHitMesh);
+                    interactableMeshes.push(mHitMesh);
+                    
+                    const mOrbitGeo = new THREE.BufferGeometry().setFromPoints(new THREE.EllipseCurve(0, 0, mData.dist, mData.dist, 0, 2 * Math.PI, false, 0).getPoints(64));
+                    const mOrbitMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.2 });
+                    const mOrbitLine = new THREE.Line(mOrbitGeo, mOrbitMat);
+                    mOrbitLine.rotation.x = Math.PI / 2;
+                    
+                    orbitGroup.add(mOrbitLine);
+                    orbitGroup.add(mMesh);
+                    moonsList.push({ mesh: mMesh, data: mData });
+                });
+
+                const label = createLabel(pData.lang[currentLang].name);
+                label.position.y = pData.radius + 1.8;
+                label.userData = { targetData: pData, parentId: null, originalMesh: pMesh };
+                interactableMeshes.push(label);
+                orbitGroup.add(label);
+
+                planetSystems.push({ group: orbitGroup, planetMesh: pMesh, cloudMesh: cloudMesh, moons: moonsList, data: pData, label: label, displayAngle: 0 });
+
+                const segments = Math.max(128, pData.distance * 2);
+                const orbitPoints = new THREE.EllipseCurve(0, 0, pData.distance, pData.distance, 0, 2 * Math.PI, false, 0).getPoints(segments);
+                
+                const orbitLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(orbitPoints), new THREE.LineBasicMaterial({ color: 0x00c3ff, transparent: true, opacity: 0.15, blending: THREE.AdditiveBlending }));
+                orbitLine.rotation.x = Math.PI / 2;
+                scene.add(orbitLine);
+            });
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function setupLanguageSwitch() {
+            const btnZh = document.getElementById('btn-lang-zh');
+            const btnEn = document.getElementById('btn-lang-en');
+            if(btnZh) btnZh.addEventListener('click', () => switchLanguage('zh'));
+            if(btnEn) btnEn.addEventListener('click', () => switchLanguage('en'));
+        }
+
+        function switchLanguage(lang) {
+            if (currentLang === lang) return;
+            currentLang = lang;
+
+            const btnZh = document.getElementById('btn-lang-zh');
+            if (btnZh) btnZh.classList.toggle('active', lang === 'zh');
+            const btnEn = document.getElementById('btn-lang-en');
+            if (btnEn) btnEn.classList.toggle('active', lang === 'en');
+
+            const dict = uiDictionary[lang];
+            
+            const setText = (id, text) => { const el = document.getElementById(id); if (el) el.innerText = text; };
+
+            setText('ui-select-prompt', dict.prompt);
+            setText('ui-events-title', dict.evtTitle);
+            setText('btn-evt-normal', dict.evtNormal);
+            setText('btn-evt-align', dict.evtAlign);
+            setText('btn-evt-cross', dict.evtCross);
+            setText('ui-scale-title', dict.scaleTitle);
+            setText('ui-success-title', dict.success);
+            setText('ui-quest-label', dict.questLabel);
+            setText('ui-discovery-title', dict.discovery);
+            setText('ui-gallery-title', dict.galleryTitle);
+            
+            // 更新資料面板內的小標籤
+            setText('ui-db-title', dict.dbTitle);
+            setText('ui-earth-label', dict.earthIcon);
+            setText('ui-label-mass', dict.lblMass);
+            setText('ui-label-dist', dict.lblDist); // 會在點擊時動態判斷是 AU 還是 km
+            setText('ui-label-radius', dict.lblRadius);
+            setText('ui-label-orbit', dict.lblOrbit);
+            setText('ui-label-day', dict.lblDay);
+            setText('ui-label-temp', dict.lblTemp);
+            setText('ui-atm-title', dict.lblAtm);
+            setText('ui-features-title', dict.lblFeatures);
+            
+            // 更新全破文字
+            setText('grand-title', dict.grandTitle);
+            setText('grand-msg', dict.grandMsg);
+            setText('grand-submsg', dict.grandSub);
+            
+            const btnReturn = document.getElementById('ui-btn-return');
+            if (btnReturn) {
+                btnReturn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"></path></svg>${dict.returnBtn}`;
+            }
+
+            updateQuestUI(); 
+            
+            const galleryModal = document.getElementById('gallery-modal');
+            if(galleryModal && !galleryModal.classList.contains('opacity-0')){
+                openGallery(); 
+            }
+
+            createLabel(sunData.lang[lang].name, sunLabel, true);
+            planetSystems.forEach(sys => { createLabel(sys.data.lang[lang].name, sys.label); });
+
+            if (selectedTargetId) {
+                const meshInfo = interactableMeshes.find(m => m.userData.targetData.id === selectedTargetId);
+                if(meshInfo) updatePanelContent(meshInfo.userData);
+            }
+        }
+
+        function setupEvents() {
+            const buttons = document.querySelectorAll('.event-btn');
+            buttons.forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    if (isPaused) resetView(); 
+                    buttons.forEach(b => b.classList.remove('active'));
+                    e.target.classList.add('active');
+                    currentEventMode = e.target.getAttribute('data-event');
+                });
+            });
+
+            const btnOpenGallery = document.getElementById('btn-open-gallery');
+            if (btnOpenGallery) btnOpenGallery.addEventListener('click', openGallery);
+            
+            const btnCloseGallery = document.getElementById('btn-close-gallery');
+            if (btnCloseGallery) btnCloseGallery.addEventListener('click', closeGallery);
+            
+            // 綁定面板收合按鈕事件
+            const btnTogglePanel = document.getElementById('btn-toggle-panel');
+            if(btnTogglePanel) {
+                btnTogglePanel.addEventListener('click', () => {
+                    const infoPanel = document.getElementById('info-panel');
+                    const toggleIcon = document.getElementById('toggle-icon');
+                    if(infoPanel.classList.contains('panel-collapsed')) {
+                        infoPanel.classList.remove('panel-collapsed');
+                        toggleIcon.style.transform = 'rotate(0deg)'; // 箭頭向右
+                    } else {
+                        infoPanel.classList.add('panel-collapsed');
+                        toggleIcon.style.transform = 'rotate(180deg)'; // 箭頭向左
+                    }
+                });
+            }
+
+            // 綁定音樂按鈕
+            const btnMusic = document.getElementById('btn-music');
+            if(btnMusic) {
+                btnMusic.addEventListener('click', () => {
+                    userInteracted = true;
+                    toggleMusic();
+                });
+            }
+        }
+
+        function setupInteractions() {
+            const reticle = document.getElementById('reticle');
+            let pointerDownPos = { x: 0, y: 0 };
+
+            // 記錄按下的位置，用來判斷是「滑動(Drag)」還是「點擊(Tap)」
+            window.addEventListener('pointerdown', (e) => {
+                pointerDownPos.x = e.clientX;
+                pointerDownPos.y = e.clientY;
+            });
+
+            window.addEventListener('pointermove', (e) => {
+                // 觸控螢幕不需要游標懸停效果，避免干擾效能與誤判
+                if (e.pointerType !== 'mouse') return;
+
+                const modal = document.getElementById('gallery-modal');
+                if (modal && !modal.classList.contains('opacity-0')) return;
+
+                mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+                mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+                raycaster.setFromCamera(mouse, camera);
+                
+                const intersects = raycaster.intersectObjects(interactableMeshes);
+                if (intersects.length > 0) {
+                    const targetInfo = intersects[0].object.userData;
+                    document.body.style.cursor = 'crosshair';
+                    if (reticle) {
+                        reticle.style.opacity = '1';
+                        reticle.style.left = e.clientX + 'px';
+                        reticle.style.top = e.clientY + 'px';
+                        
+                        reticle.className = 'target-reticle'; 
+                        if(targetInfo.targetData.isStar) reticle.classList.add('is-sun');
+                        else if(!targetInfo.targetData.isPlanet) reticle.classList.add('is-moon');
+                        
+                        // 只有在沒有執行鎖定動畫時才做旋轉hover
+                        if(!reticle.classList.contains('is-locked')) {
+                            gsap.to(reticle, { rotation: "+=45", duration: 0.5, ease: "power1.out", overwrite: "auto" });
+                        }
+                    }
+                } else {
+                    document.body.style.cursor = 'default';
+                    if (reticle && !reticle.classList.contains('is-locked')) {
+                        reticle.style.opacity = '0';
+                        gsap.to(reticle, { rotation: 0, duration: 0.3, overwrite: "auto" });
+                    }
+                }
+            });
+
+            // 支援電腦滑鼠與觸控螢幕的最終點擊判定
+            window.addEventListener('pointerup', (e) => {
+                // 如果是滑動(拖曳視角)，不觸發點擊選擇 (容許10像素誤差)
+                const dx = e.clientX - pointerDownPos.x;
+                const dy = e.clientY - pointerDownPos.y;
+                if (Math.sqrt(dx * dx + dy * dy) > 10) return;
+
+                // 如果點擊了 UI 或圖鑑層，直接返回
+                if(e.target.closest('#ui-layer') || e.target.closest('#gallery-modal') || e.target.closest('#info-panel')) return;
+                
+                mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+                mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+                
+                // 把準星強制移動到點擊位置，供鎖定動畫使用
+                if (reticle) {
+                    reticle.style.left = e.clientX + 'px';
+                    reticle.style.top = e.clientY + 'px';
+                }
+
+                raycaster.setFromCamera(mouse, camera);
+                const intersects = raycaster.intersectObjects(interactableMeshes);
+                if (intersects.length > 0) {
+                    focusOnTarget(intersects[0].object);
+                }
+            });
+
+            const btnBack = document.getElementById('btn-back');
+            if (btnBack) btnBack.addEventListener('click', resetView);
+        }
+
+        function updatePanelContent(userData) {
+            const data = userData.targetData;
+            const langData = data.lang[currentLang];
+            const dict = uiDictionary[currentLang];
+
+            let themeColor = 'text-hologram'; let themeBorder = 'bg-hologram'; let titleShadow = 'drop-shadow-[0_0_15px_rgba(0,240,255,0.4)]';
+            
+            if (data.isStar) { themeColor = 'text-hologram-sun'; themeBorder = 'bg-hologram-sun'; titleShadow = 'drop-shadow-[0_0_15px_rgba(255,136,0,0.6)]'; } 
+            else if (!data.isPlanet) { themeColor = 'text-hologram-moon'; themeBorder = 'bg-hologram-moon'; titleShadow = 'drop-shadow-[0_0_15px_rgba(255,187,0,0.5)]'; }
+
+            const setText = (id, text) => { const el = document.getElementById(id); if(el) el.innerText = text; };
+
+            const panelIdEl = document.getElementById('panel-id');
+            if(panelIdEl) { panelIdEl.className = `font-bold ${themeColor}`; panelIdEl.innerText = `ID: ${data.idx}`; }
+            
+            const pNameEl = document.getElementById('planet-name');
+            if(pNameEl) { pNameEl.className = `text-3xl sm:text-4xl font-bold tracking-wider text-white transition-colors duration-300 ${titleShadow}`; pNameEl.innerText = langData.name; }
+            
+            const pSubNameEl = document.getElementById('planet-subname');
+            if(pSubNameEl) { pSubNameEl.className = `font-tech text-base sm:text-lg tracking-[0.4em] uppercase opacity-90 ${themeColor}`; pSubNameEl.innerText = langData.sub; }
+            setText('planet-desc', langData.desc);
+            
+            const divider = document.getElementById('title-divider');
+            if(divider) divider.className = `h-[2px] w-16 mb-4 ${themeBorder} shadow-[0_0_10px_currentColor] text-transparent`;
+
+            const badge = document.getElementById('moon-parent-badge');
+            if (badge) {
+                if (!data.isPlanet && !data.isStar && userData.parentPlanet) {
+                    badge.classList.remove('hidden'); badge.innerText = `${dict.orbitPrefix}${userData.parentPlanet.lang[currentLang].name}`;
+                } else { badge.classList.add('hidden'); }
+            }
+            
+            const scaleContainer = document.getElementById('scale-container');
+            const scaleBar = document.getElementById('scale-bar');
+            const scaleText = document.getElementById('scale-ratio-text');
+            
+            if(scaleContainer && scaleBar && scaleText) {
+                if(data.scaleRatio) {
+                    scaleContainer.classList.remove('hidden');
+                    scaleText.innerText = `${data.scaleRatio}x`;
+                    scaleText.className = `font-bold ${themeColor}`;
+                    scaleBar.className = `h-full earth-scale-bar ${themeBorder} w-0`;
+                    
+                    setTimeout(() => {
+                        let percent = data.scaleRatio > 12 ? 100 : (data.scaleRatio / 12) * 100;
+                        if(data.scaleRatio <= 1.0) percent = data.scaleRatio * 10; 
+                        scaleBar.style.width = `${percent}%`;
+                    }, 100);
+                } else {
+                    scaleContainer.classList.add('hidden');
+                }
+            }
+            
+            setText('stat-mass', data.mass);
+            
+            // 根據語言與星體類型更新對應的標籤
+            const lblDistEl = document.getElementById('ui-label-dist');
+            if(lblDistEl) {
+                if (!data.isPlanet && !data.isStar) {
+                    lblDistEl.innerText = dict.lblDistMoon;
+                    if(data.gravity) animateValue('stat-gravity', parseInt(data.gravity.replace(/,/g, '')), false, true);
+                } else {
+                    lblDistEl.innerText = dict.lblDist;
+                    if(data.auDist) animateValue('stat-gravity', parseFloat(data.auDist), true);
+                }
+            }
+            
+            setText('stat-radius', data.radiusKm);
+            
+            const lblOrbitEl = document.getElementById('ui-label-orbit');
+            if(lblOrbitEl) {
+                if(data.isStar) { 
+                    lblOrbitEl.innerText = dict.lblOrbitStar; 
+                    setText('stat-orbit', '15.0'); 
+                } else { 
+                    lblOrbitEl.innerText = dict.lblOrbit; 
+                    animateValue('stat-orbit', parseFloat(data.orbitDays.replace(/,/g, '')), data.orbitDays.includes('.'), true); 
+                }
+            }
+
+            setText('stat-day', langData.day); 
+            setText('stat-temp', data.temp); 
+            
+            const atmContainer = document.getElementById('atm-container');
+            if (atmContainer) {
+                atmContainer.innerHTML = '';
+                if (!langData.atm || langData.atm.length === 0) {
+                    atmContainer.innerHTML = `<div class="text-gray-500 italic text-center py-2">${dict.noAtmosphere}</div>`;
+                } else {
+                    langData.atm.forEach((atm) => {
+                        const row = document.createElement('div');
+                        row.innerHTML = `<div class="flex justify-between text-xs mb-1"><span class="text-gray-300">${atm.gas}</span><span class="font-tech ${themeColor}">${atm.pct}%</span></div><div class="w-full bg-black/50 h-1.5 rounded-full overflow-hidden"><div class="gas-bar h-full ${themeBorder} shadow-[0_0_5px_currentColor] text-transparent" style="width: ${atm.pct}%"></div></div>`;
+                        atmContainer.appendChild(row);
+                    });
+                }
+            }
+
+            const featuresList = document.getElementById('planet-features');
+            if (featuresList) {
+                featuresList.innerHTML = '';
+                langData.features.forEach((feat) => {
+                    const li = document.createElement('li');
+                    li.className = 'flex items-start gap-3 text-sm';
+                    li.innerHTML = `<div class="mt-1 flex-shrink-0 w-1.5 h-1.5 rounded-full ${themeBorder}"></div><span class="text-gray-200">${feat}</span>`;
+                    featuresList.appendChild(li);
+                });
+            }
+        }
+
+        function focusOnTarget(mesh) {
+            const userData = mesh.userData;
+            const data = userData.targetData;
+            const targetMesh = userData.originalMesh || mesh;
+
+            // 視覺回饋：鎖定動畫！(優化觸控設備體驗)
+            const reticle = document.getElementById('reticle');
+            if (reticle && selectedTargetId !== data.id) {
+                // 確保觸控點擊時也能有正確的顏色分類
+                reticle.className = 'target-reticle'; 
+                if(data.isStar) reticle.classList.add('is-sun');
+                else if(!data.isPlanet) reticle.classList.add('is-moon');
+
+                gsap.killTweensOf(reticle);
+                reticle.style.opacity = '1';
+                reticle.classList.add('is-locked');
+                
+                // 先放大再快速收縮，製造科幻電影裡的 "Target Locked" 感覺
+                gsap.fromTo(reticle, 
+                    { scale: 2.5, rotation: -45 }, 
+                    { scale: 1, rotation: 90, opacity: 0, duration: 0.6, ease: "back.out(1.5)", 
+                      onComplete: () => reticle.classList.remove('is-locked') 
+                    }
+                );
+            }
+
+            recordDiscovery(data.id);
+            checkQuestComplete(data.id);
+
+            if (selectedTargetId === data.id) return; 
+            
+            selectedTargetId = data.id;
+            isPaused = true; 
+            controls.autoRotate = false; 
+
+            updatePanelContent(userData);
+            
+            const isFloat = data.mass.includes('.');
+            animateValue('stat-mass', parseFloat(data.mass.replace(/,/g, '')), isFloat, !isFloat);
+            
+            animateValue('stat-radius', parseInt(data.radiusKm.replace(/,/g, '')), false, true);
+
+            const listItems = document.querySelectorAll('#planet-features li');
+            listItems.forEach((li, index) => {
+                gsap.fromTo(li, {opacity: 0, y: 10}, { opacity: 1, y: 0, duration: 0.4, delay: 0.3 + (index * 0.1) });
+            });
+
+            const infoPanel = document.getElementById('info-panel');
+            if (infoPanel) {
+                // 自動展開邏輯：點擊新星球時，如果面板是收合的，自動展開
+                if(infoPanel.classList.contains('panel-collapsed')) {
+                    infoPanel.classList.remove('panel-collapsed');
+                    const toggleIcon = document.getElementById('toggle-icon');
+                    if(toggleIcon) toggleIcon.style.transform = 'rotate(0deg)';
+                }
+                infoPanel.classList.remove('translate-x-full');
+            }
+            
+            if(window.innerWidth < 640) {
+                const eventPanel = document.getElementById('event-panel');
+                const questContainer = document.getElementById('quest-container');
+                if (eventPanel) { eventPanel.style.opacity = '0'; eventPanel.style.pointerEvents = 'none'; }
+                if (questContainer) questContainer.style.opacity = '0'; 
+            }
+
+            planetSystems.forEach(s => s.label.visible = false);
+            if (sunLabel) sunLabel.visible = false;
+
+            const targetWorldPos = new THREE.Vector3();
+            targetMesh.getWorldPosition(targetWorldPos);
+
+            const sizeBase = data.isStar ? data.radius : (data.isPlanet ? data.radius : data.size);
+            const offsetMultiplier = data.isStar ? 8 : (data.isPlanet ? 6 : 18); 
+            const baseOffset = data.isStar ? 15 : (data.isPlanet ? 6 : 3);
+            const offsetDist = sizeBase * offsetMultiplier + baseOffset; 
+            
+            const dirToSun = targetWorldPos.clone().negate().normalize(); 
+            const isMobile = window.innerWidth < 640;
+            
+            let targetCamPos;
+            if(data.isStar) {
+                 targetCamPos = targetWorldPos.clone().add(new THREE.Vector3(offsetDist, offsetDist*0.5, offsetDist));
+            } else {
+                 const up = new THREE.Vector3(0, 1, 0);
+                 const right = new THREE.Vector3().crossVectors(up, dirToSun).normalize();
+                 if (right.lengthSq() < 0.01) right.set(1, 0, 0); 
+
+                 const camOffset = new THREE.Vector3()
+                     .addScaledVector(dirToSun, offsetDist * 0.7) 
+                     .addScaledVector(up, offsetDist * 0.3)       
+                     .addScaledVector(right, offsetDist * 0.6);   
+
+                 if(isMobile) {
+                     camOffset.addScaledVector(up, offsetDist * 0.5); 
+                 } 
+                 targetCamPos = targetWorldPos.clone().add(camOffset);
+            }
+
+            gsap.killTweensOf(camera.position);
+            gsap.killTweensOf(controls.target);
+
+            gsap.to(camera.position, { x: targetCamPos.x, y: targetCamPos.y, z: targetCamPos.z, duration: 2.5, ease: "power3.inOut" });
+            gsap.to(controls.target, { x: targetWorldPos.x, y: targetWorldPos.y, z: targetWorldPos.z, duration: 2.5, ease: "power3.inOut" });
+        }
+
+        function resetView() {
+            planetSystems.forEach(s => s.label.visible = true);
+            if (sunLabel) sunLabel.visible = true;
+
+            selectedTargetId = null;
+            isPaused = false; 
+            controls.autoRotate = true; 
+
+            const infoPanel = document.getElementById('info-panel');
+            const eventPanel = document.getElementById('event-panel');
+            const questContainer = document.getElementById('quest-container');
+
+            if (infoPanel) infoPanel.classList.add('translate-x-full');
+            if (eventPanel) { eventPanel.style.opacity = '1'; eventPanel.style.pointerEvents = 'auto'; }
+            if (questContainer) questContainer.style.opacity = '1';
+
+            gsap.to(camera.position, { x: 0, y: 150, z: 250, duration: 3, ease: "power3.inOut" });
+            gsap.to(controls.target, { x: 0, y: 0, z: 0, duration: 3, ease: "power3.inOut" });
+        }
+
+        function animateValue(id, end, isFloat, formatComma = false) {
+            const obj = document.getElementById(id);
+            if (!obj) return;
+            let start = null;
+            const duration = 1000;
+            const step = (ts) => {
+                if (!start) start = ts;
+                const progress = Math.min((ts - start) / duration, 1);
+                const ease = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
+                let current = ease * end;
+                if (!isFloat) current = Math.floor(current); else current = current.toFixed(2);
+                if (formatComma) current = current.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+                obj.innerHTML = current;
+                if (progress < 1) window.requestAnimationFrame(step);
+            };
+            window.requestAnimationFrame(step);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (!isPaused) time += 1;
+
+            if(sunMesh) sunMesh.rotation.y += 0.002;
+            if(sunLabel) sunLabel.quaternion.copy(camera.quaternion);
+            
+            if(asteroidGroup && !isPaused) asteroidGroup.rotation.y -= 0.0005;
+            if(nebulaGroup && !isPaused) nebulaGroup.rotation.y += 0.00015;
+
+            planetSystems.forEach((sys, index) => {
+                if (!isPaused) {
+                    let targetAngle = 0;
+                    if (currentEventMode === 'normal') { targetAngle = time * sys.data.speed * GLOBAL_SPEED_MULTIPLIER; } 
+                    else if (currentEventMode === 'alignment') { targetAngle = time * 0.002; } 
+                    else if (currentEventMode === 'cross') { const quadrantAngles = [0, Math.PI / 2, Math.PI, 3 * Math.PI / 2]; targetAngle = quadrantAngles[index % 4] + time * 0.002; }
+
+                    if (sys.displayAngle === undefined) sys.displayAngle = targetAngle;
+                    let diff = targetAngle - sys.displayAngle;
+                    diff = Math.atan2(Math.sin(diff), Math.cos(diff)); 
+                    const lerpSpeed = currentEventMode === 'normal' ? 0.05 : 0.02;
+                    sys.displayAngle += diff * lerpSpeed;
+
+                    sys.group.position.x = Math.cos(sys.displayAngle) * sys.data.distance;
+                    sys.group.position.z = Math.sin(sys.displayAngle) * sys.data.distance;
+                }
+
+                sys.planetMesh.rotation.y += 0.005; 
+                if(sys.cloudMesh) sys.cloudMesh.rotation.y += 0.006; 
+                sys.label.quaternion.copy(camera.quaternion);
+
+                sys.moons.forEach(moon => {
+                    if (!isPaused) {
+                        const mAngle = time * moon.data.speed * GLOBAL_SPEED_MULTIPLIER;
+                        moon.mesh.position.x = Math.cos(mAngle) * moon.data.dist;
+                        moon.mesh.position.z = Math.sin(mAngle) * moon.data.dist;
+                    }
+                    moon.mesh.rotation.y += 0.01; 
+                });
+            });
+
+            controls.update(); 
+            composer.render();
+        }
+    </script>
+</body>
+</html>
